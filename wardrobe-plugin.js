@@ -4,22 +4,26 @@
   window.__wdp_loaded = true;
   console.log('[衣橱] 插件已加载');
 
-  // ========== 内联样式工具 ==========
-  // 不用 <style> 标签（可能被 CSP 屏蔽），直接在元素上设样式
-  function setStyles(el, styles) {
-    for (var key in styles) {
-      if (styles.hasOwnProperty(key)) {
-        el.style[key] = styles[key];
-      }
-    }
+  // ========== 顶层窗口定位 ==========
+  // 酒馆助手在 sandbox 中执行脚本，viewport 为 0×0，需要跳到 top window
+  var topWin, topDoc;
+  try {
+    topWin = window.top;
+    topDoc = topWin.document;
+    console.log('[衣橱] top window accessible:', topWin !== window);
+  } catch(e) {
+    console.log('[衣橱] top window blocked, using current');
+    topWin = window;
+    topDoc = document;
   }
 
   // DOM 就绪后初始化
   function init() {
-    if (!document.body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
+    var body = topDoc.body;
+    if (!body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
     console.log('[衣橱] 开始构建 UI...');
-    console.log('[衣橱] body:', document.body ? document.body.tagName : 'MISSING');
-    console.log('[衣橱] head:', document.head ? document.head.tagName : 'MISSING');
+    console.log('[衣橱] body visible:', body.getBoundingClientRect().width > 0);
+    console.log('[衣橱] viewport:', topWin.innerWidth + 'x' + topWin.innerHeight);
     try {
 
   // ========== CSS 注入 ==========
@@ -105,7 +109,7 @@
 
   var styleEl = document.createElement('style');
   styleEl.textContent = css;
-  document.head.appendChild(styleEl);
+  topDoc.head.appendChild(styleEl);
 
   // ========== 查找酒馆可见容器 ==========
   var containerSelectors = [
@@ -115,7 +119,7 @@
     '[id*="send"]', 'textarea'
   ];
   containerSelectors.forEach(function(sel) {
-    var el = document.querySelector(sel);
+    var el = topDoc.querySelector(sel);
     if (el) {
       var r = el.getBoundingClientRect();
       console.log('[衣橱] found:', sel, 'visible:', r.width > 0 && r.height > 0, 'size:', r.width + 'x' + r.height);
@@ -183,7 +187,7 @@
     trigger.className = 'wdp-trigger';
     trigger.innerHTML = '👗';
     trigger.title = '衣橱管理';
-    document.body.appendChild(trigger);
+    topDoc.body.appendChild(trigger);
     console.log('[衣橱] trigger appended, in DOM:', document.body.contains(trigger));
 
     // 浮窗面板
@@ -212,12 +216,12 @@
           '<div class="wdp-empty" id="wdp-empty" style="display:none;">暂无物品，点击"+ 添加"创建</div>' +
         '</div>' +
       '</div>';
-    document.body.appendChild(panel);
+    topDoc.body.appendChild(panel);
     console.log('[衣橱] panel appended, in DOM:', document.body.contains(panel));
     var overlay = document.createElement('div');
     overlay.className = 'wdp-modal-overlay';
     overlay.id = 'wdp-overlay';
-    document.body.appendChild(overlay);
+    topDoc.body.appendChild(overlay);
 
     return {
       trigger: trigger,
@@ -256,21 +260,21 @@
       dom.panel.style.transition = 'none';
       e.preventDefault();
     });
-    document.addEventListener('mousemove', function(e) {
+    topDoc.addEventListener('mousemove', function(e) {
       if (!isDragging) return;
       var dx = e.clientX - startX;
       var dy = e.clientY - startY;
       var left = startLeft + dx;
       var top = startTop + dy;
-      var maxLeft = window.innerWidth - dom.panel.offsetWidth;
-      var maxTop = window.innerHeight - dom.panel.offsetHeight;
+      var maxLeft = topWin.innerWidth - dom.panel.offsetWidth;
+      var maxTop = topWin.innerHeight - dom.panel.offsetHeight;
       left = Math.max(0, Math.min(left, maxLeft));
       top = Math.max(0, Math.min(top, maxTop));
       dom.panel.style.left = left + 'px';
       dom.panel.style.top = top + 'px';
       dom.panel.style.transform = 'none';
     });
-    document.addEventListener('mouseup', function() {
+    topDoc.addEventListener('mouseup', function() {
       if (isDragging) {
         isDragging = false;
         dom.panel.style.transition = '';
@@ -484,16 +488,16 @@
       '</div>';
     dom.overlay.classList.add('wdp-modal-overlay--visible');
 
-    document.getElementById('wdp-form-cancel').addEventListener('click', closeForm);
+    topDoc.getElementById('wdp-form-cancel').addEventListener('click', closeForm);
     dom.overlay.addEventListener('click', function(e) {
       if (e.target === dom.overlay) closeForm();
     });
-    document.getElementById('wdp-form-save').addEventListener('click', function() {
-      var name = document.getElementById('wdp-form-name').value.trim();
+    topDoc.getElementById('wdp-form-save').addEventListener('click', function() {
+      var name = topDoc.getElementById('wdp-form-name').value.trim();
       if (!name) { alert('名称不能为空'); return; }
-      var imageUrl = document.getElementById('wdp-form-url').value.trim();
-      var promptText = document.getElementById('wdp-form-text').value.trim();
-      var category = document.getElementById('wdp-form-cat').value;
+      var imageUrl = topDoc.getElementById('wdp-form-url').value.trim();
+      var promptText = topDoc.getElementById('wdp-form-text').value.trim();
+      var category = topDoc.getElementById('wdp-form-cat').value;
 
       if (isEdit) {
         var idx = state.items.findIndex(function(i) { return i.id === item.id; });
@@ -525,7 +529,7 @@
   }
 
   // 绑定添加按钮
-  document.getElementById('wdp-btn-add').addEventListener('click', function() {
+  topDoc.getElementById('wdp-btn-add').addEventListener('click', function() {
     if (state.categories[currentFilter.type].length === 0) {
       state.categories[currentFilter.type].push('默认');
       saveState(state);
@@ -564,7 +568,7 @@
   }
 
   function setupInjection() {
-    var textarea = document.querySelector(CONFIG.inputSelector);
+    var textarea = topDoc.querySelector(CONFIG.inputSelector);
     if (!textarea) {
       setTimeout(setupInjection, CONFIG.retryDelay);
       return;
@@ -582,8 +586,8 @@
     }, true);
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(setupInjection, 1000); });
+  if (topDoc.readyState === 'loading') {
+    topDoc.addEventListener('DOMContentLoaded', function() { setTimeout(setupInjection, 1000); });
   } else {
     setTimeout(setupInjection, 1000);
   }
@@ -650,7 +654,7 @@
   })();
 
   // ========== 键盘快捷键 ==========
-  document.addEventListener('keydown', function(e) {
+  topDoc.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       if (dom.overlay.classList.contains('wdp-modal-overlay--visible')) {
         closeForm();
@@ -663,8 +667,8 @@
     } catch(e) { console.error('[衣橱] 初始化失败:', e.message, e.stack); }
   } // init()
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+  if (topDoc.readyState === 'loading') {
+    topDoc.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
