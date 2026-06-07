@@ -502,4 +502,126 @@
   // ========== 初始化渲染 ==========
   renderCategories();
   renderItems();
+
+  // ========== 提示词注入 ==========
+  var CONFIG = {
+    inputSelector: '#send_textarea, textarea[id*="send"], textarea[id*="message"]',
+    retryDelay: 2000,
+    injectionPrefix: '\n\n（外表描写：',
+    injectionSuffix: '）',
+    injectionSeparator: '，'
+  };
+
+  function getInjectionText() {
+    var parts = [];
+    var hairId = state.selected.hairstyle;
+    var clothesId = state.selected.clothes;
+    if (hairId) {
+      var hair = state.items.find(function(i) { return i.id === hairId; });
+      if (hair) parts.push(hair.promptText || hair.name);
+    }
+    if (clothesId) {
+      var clothes = state.items.find(function(i) { return i.id === clothesId; });
+      if (clothes) parts.push(clothes.promptText || clothes.name);
+    }
+    if (parts.length === 0) return '';
+    return CONFIG.injectionPrefix + parts.join(CONFIG.injectionSeparator) + CONFIG.injectionSuffix;
+  }
+
+  function setupInjection() {
+    var textarea = document.querySelector(CONFIG.inputSelector);
+    if (!textarea) {
+      setTimeout(setupInjection, CONFIG.retryDelay);
+      return;
+    }
+
+    textarea.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+      var injection = getInjectionText();
+      if (!injection) return;
+      setTimeout(function() {
+        if (textarea.value.indexOf(injection) === -1) {
+          textarea.value += injection;
+        }
+      }, 0);
+    }, true);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(setupInjection, 1000); });
+  } else {
+    setTimeout(setupInjection, 1000);
+  }
+
+  // ========== 导入导出 ==========
+  function exportData() {
+    var blob = new Blob([JSON.stringify(state, null, 2)], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'wardrobe-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importData() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.addEventListener('change', function() {
+      var file = input.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.addEventListener('load', function() {
+        try {
+          var data = JSON.parse(reader.result);
+          if (!data.categories || !data.items || !data.selected) {
+            throw new Error('数据格式不正确：缺少 categories/items/selected 字段');
+          }
+          if (!confirm('导入将覆盖当前数据，确定继续？')) return;
+          state = data;
+          saveState(state);
+          renderCategories();
+          renderItems();
+          alert('导入成功！共 ' + state.items.length + ' 个物品。');
+        } catch(e) {
+          alert('导入失败：' + e.message);
+        }
+      });
+      reader.readAsText(file);
+    });
+    input.click();
+  }
+
+  // 绑定导入导出按钮
+  (function() {
+    var expBtn = document.createElement('button');
+    expBtn.className = 'wdp-close';
+    expBtn.title = '导出数据';
+    expBtn.textContent = '📥';
+    expBtn.style.cssText = 'margin-right:8px;font-size:14px;';
+    expBtn.addEventListener('click', exportData);
+
+    var impBtn = document.createElement('button');
+    impBtn.className = 'wdp-close';
+    impBtn.title = '导入数据';
+    impBtn.textContent = '📤';
+    impBtn.style.cssText = 'margin-right:8px;font-size:14px;';
+    impBtn.addEventListener('click', importData);
+
+    var closeBtn = dom.header.querySelector('.wdp-close');
+    closeBtn.parentNode.insertBefore(impBtn, closeBtn);
+    closeBtn.parentNode.insertBefore(expBtn, impBtn);
+  })();
+
+  // ========== 键盘快捷键 ==========
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (dom.overlay.classList.contains('wdp-modal-overlay--visible')) {
+        closeForm();
+      } else {
+        dom.panel.classList.remove('wdp-panel--visible');
+      }
+    }
+  });
 })();
