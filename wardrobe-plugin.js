@@ -4,6 +4,10 @@
   window.__wdp_loaded = true;
   console.log('[衣橱] 插件已加载');
 
+  // DOM 就绪后初始化
+  function init() {
+    if (!document.body) { setTimeout(init, 100); return; }
+
   // ========== CSS 注入 ==========
   var css = [
     '.wdp-trigger{position:fixed;bottom:24px;right:24px;width:48px;height:48px;',
@@ -624,4 +628,11 @@
       }
     }
   });
+  } // init()
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
