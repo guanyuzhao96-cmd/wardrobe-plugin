@@ -8,6 +8,8 @@
   function init() {
     if (!document.body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
     console.log('[衣橱] 开始构建 UI...');
+    console.log('[衣橱] body:', document.body ? document.body.tagName : 'MISSING');
+    console.log('[衣橱] head:', document.head ? document.head.tagName : 'MISSING');
     try {
 
   // ========== CSS 注入 ==========
@@ -155,6 +157,7 @@
     trigger.innerHTML = '👗';
     trigger.title = '衣橱管理';
     document.body.appendChild(trigger);
+    console.log('[衣橱] trigger appended, in DOM:', document.body.contains(trigger));
 
     // 浮窗面板
     var panel = document.createElement('div');
@@ -183,8 +186,7 @@
         '</div>' +
       '</div>';
     document.body.appendChild(panel);
-
-    // 弹窗遮罩
+    console.log('[衣橱] panel appended, in DOM:', document.body.contains(panel));
     var overlay = document.createElement('div');
     overlay.className = 'wdp-modal-overlay';
     overlay.id = 'wdp-overlay';

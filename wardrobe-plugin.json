@@ -3,7 +3,7 @@
   "enabled": true,
   "name": "衣橱管理",
   "id": "c1a2b3d4-e5f6-7890-abcd-ef1234567890",
-  "content": "import 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@fa628ff/wardrobe-plugin.js'",
+  "content": "import 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@ccc6bb5/wardrobe-plugin.js'",
   "info": "管理角色衣服和发型，选中后在生成时自动注入外表描写。右下角👗打开面板。",
   "button": {
     "enabled": false,
