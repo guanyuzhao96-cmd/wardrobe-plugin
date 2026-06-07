@@ -4,6 +4,16 @@
   window.__wdp_loaded = true;
   console.log('[衣橱] 插件已加载');
 
+  // ========== 内联样式工具 ==========
+  // 不用 <style> 标签（可能被 CSP 屏蔽），直接在元素上设样式
+  function setStyles(el, styles) {
+    for (var key in styles) {
+      if (styles.hasOwnProperty(key)) {
+        el.style[key] = styles[key];
+      }
+    }
+  }
+
   // DOM 就绪后初始化
   function init() {
     if (!document.body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
@@ -96,6 +106,14 @@
   var styleEl = document.createElement('style');
   styleEl.textContent = css;
   document.head.appendChild(styleEl);
+
+  // ========== CSP 测试：纯内联红色方块 ==========
+  var testEl = document.createElement('div');
+  testEl.style.cssText = 'position:fixed;top:10px;left:10px;width:60px;height:60px;background:red;z-index:2147483647;border:3px solid yellow;';
+  testEl.textContent = 'TEST';
+  document.body.appendChild(testEl);
+  console.log('[衣橱] test red box in DOM:', document.body.contains(testEl));
+  console.log('[衣橱] test red box computed width:', window.getComputedStyle(testEl).width);
 
   // ========== 数据管理 ==========
   var STORAGE_KEY = 'wardrobe_plugin_data';
