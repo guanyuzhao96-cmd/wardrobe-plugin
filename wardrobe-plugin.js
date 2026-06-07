@@ -107,13 +107,20 @@
   styleEl.textContent = css;
   document.head.appendChild(styleEl);
 
-  // ========== CSP 测试：纯内联红色方块 ==========
-  var testEl = document.createElement('div');
-  testEl.style.cssText = 'position:fixed;top:10px;left:10px;width:60px;height:60px;background:red;z-index:2147483647;border:3px solid yellow;';
-  testEl.textContent = 'TEST';
-  document.body.appendChild(testEl);
-  console.log('[衣橱] test red box in DOM:', document.body.contains(testEl));
-  console.log('[衣橱] test red box computed width:', window.getComputedStyle(testEl).width);
+  // ========== iframe 排查 ==========
+  var iframes = document.querySelectorAll('iframe');
+  console.log('[衣橱] iframe count:', iframes.length);
+  iframes.forEach(function(f, i) {
+    console.log('[衣橱] iframe', i, '- src:', f.src, 'rect:', f.getBoundingClientRect());
+    try {
+      console.log('[衣橱] iframe', i, '- contentBody:', !!f.contentDocument.body);
+    } catch(e) {
+      console.log('[衣橱] iframe', i, '- cross-origin, cannot access');
+    }
+  });
+  // 测试：加到最顶层 body 或者 shadow root
+  console.log('[衣橱] document.body rect:', document.body.getBoundingClientRect());
+  console.log('[衣橱] viewport:', window.innerWidth, 'x', window.innerHeight);
 
   // ========== 数据管理 ==========
   var STORAGE_KEY = 'wardrobe_plugin_data';
