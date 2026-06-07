@@ -71,7 +71,7 @@
     'position:relative;}',
     '.wdp-card:hover{border-color:#555;}',
     '.wdp-card--selected{border-color:#6366f1;background:rgba(99,102,241,.1);}',
-    '.wdp-card img{width:100%;height:90px;object-fit:cover;border-radius:6px;',
+    '.wdp-card img{width:100%;height:auto;max-height:160px;object-fit:contain;border-radius:6px;',
     'background:#2a2a3e;}',
     '.wdp-card .wdp-card-name{font-size:13px;font-weight:bold;margin:6px 0 2px;}',
     '.wdp-card .wdp-card-desc{font-size:11px;color:#999;overflow:hidden;',
@@ -81,9 +81,9 @@
     'border-radius:4px;display:none;}',
     '.wdp-card--selected .wdp-card-badge{display:block;}',
     '.wdp-card-actions{display:flex;justify-content:center;gap:6px;margin-top:4px;}',
-    '.wdp-card-actions button{background:none;border:none;cursor:pointer;',
-    'font-size:12px;color:#aaa;padding:2px 6px;}',
-    '.wdp-card-actions button:hover{color:#fff;}',
+    '.wdp-card-actions button{background:#2a2a3e;border:1px solid #555;cursor:pointer;',
+    'font-size:12px;color:#ccc;padding:4px 10px;border-radius:4px;margin:0 2px;}',
+    '.wdp-card-actions button:hover{background:#6366f1;border-color:#6366f1;color:#fff;}',
     '.wdp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);',
     'z-index:2147483647;display:none;align-items:center;justify-content:center;}',
     '.wdp-modal-overlay--visible{display:flex;}',
@@ -101,7 +101,7 @@
     'font-size:13px;}',
     '.wdp-btn-primary{background:#6366f1;color:#fff;border:none;}',
     '.wdp-btn-secondary{background:transparent;color:#aaa;border:1px solid #555;}',
-    '.wdp-img-error{background:#2a2a3e;height:90px;display:flex;align-items:center;',
+    '.wdp-img-error{background:#2a2a3e;height:120px;display:flex;align-items:center;',
     'justify-content:center;font-size:32px;border-radius:6px;color:#666;}',
     '.wdp-empty{padding:40px;text-align:center;color:#666;font-size:14px;}',
     '.wdp-toolbar{display:flex;gap:6px;}'
@@ -394,19 +394,16 @@
       }
 
       // 图片
+      var imgHtml;
       if (item.imageUrl) {
-        var img = document.createElement('img');
-        img.src = item.imageUrl;
-        img.alt = item.name;
-        img.addEventListener('error', function() {
-          img.replaceWith(buildImgError());
-        });
-        card.appendChild(img);
+        imgHtml = '<img src="' + escapeHtml(item.imageUrl) + '" alt="' + escapeHtml(item.name) + '" ' +
+          'onerror="this.replaceWith((function(){var e=document.createElement(\'div\');e.className=\'wdp-img-error\';e.textContent=\'🖼️\';return e;})())">';
       } else {
-        card.appendChild(buildImgError());
+        imgHtml = '<div class="wdp-img-error">🖼️</div>';
       }
 
-      card.innerHTML +=
+      card.innerHTML =
+        imgHtml +
         '<div class="wdp-card-name">' + escapeHtml(item.name) + '</div>' +
         '<div class="wdp-card-desc">' + escapeHtml(item.promptText || '(无描述)') + '</div>' +
         '<div class="wdp-card-badge">✓ 已选</div>' +
