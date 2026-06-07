@@ -107,20 +107,22 @@
   styleEl.textContent = css;
   document.head.appendChild(styleEl);
 
-  // ========== iframe 排查 ==========
-  var iframes = document.querySelectorAll('iframe');
-  console.log('[衣橱] iframe count:', iframes.length);
-  iframes.forEach(function(f, i) {
-    console.log('[衣橱] iframe', i, '- src:', f.src, 'rect:', f.getBoundingClientRect());
-    try {
-      console.log('[衣橱] iframe', i, '- contentBody:', !!f.contentDocument.body);
-    } catch(e) {
-      console.log('[衣橱] iframe', i, '- cross-origin, cannot access');
+  // ========== 查找酒馆可见容器 ==========
+  var containerSelectors = [
+    '#app', '#root', '#chat', '#main', '#sheld',
+    '#send_textarea', '#send_but',
+    '.main-container', '.app-container', '.chat-container',
+    '[id*="send"]', 'textarea'
+  ];
+  containerSelectors.forEach(function(sel) {
+    var el = document.querySelector(sel);
+    if (el) {
+      var r = el.getBoundingClientRect();
+      console.log('[衣橱] found:', sel, 'visible:', r.width > 0 && r.height > 0, 'size:', r.width + 'x' + r.height);
     }
   });
-  // 测试：加到最顶层 body 或者 shadow root
-  console.log('[衣橱] document.body rect:', document.body.getBoundingClientRect());
-  console.log('[衣橱] viewport:', window.innerWidth, 'x', window.innerHeight);
+  console.log('[衣橱] document.body children:', document.body.children.length);
+  console.log('[衣橱] document.body visible:', document.body.getBoundingClientRect().width > 0);
 
   // ========== 数据管理 ==========
   var STORAGE_KEY = 'wardrobe_plugin_data';
