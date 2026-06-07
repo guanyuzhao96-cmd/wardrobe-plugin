@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // jsDelivr CDN 地址
-const CDN_URL = 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@master/wardrobe-plugin.js';
+const CDN_URL = 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@fa628ff/wardrobe-plugin.js';
 const content = "import '" + CDN_URL + "'";
 
 const config = {

@@ -6,7 +6,9 @@
 
   // DOM 就绪后初始化
   function init() {
-    if (!document.body) { setTimeout(init, 100); return; }
+    if (!document.body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
+    console.log('[衣橱] 开始构建 UI...');
+    try {
 
   // ========== CSS 注入 ==========
   var css = [
@@ -628,6 +630,8 @@
       }
     }
   });
+    console.log('[衣橱] UI 构建完成');
+    } catch(e) { console.error('[衣橱] 初始化失败:', e.message, e.stack); }
   } // init()
 
   if (document.readyState === 'loading') {
