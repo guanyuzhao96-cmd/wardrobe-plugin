@@ -1,10 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const js = fs.readFileSync('wardrobe-plugin.js', 'utf-8');
-// Base64 编码 → 一行 eval 搞定，避免 content 中任何转义/换行问题
-const b64 = Buffer.from(js, 'utf-8').toString('base64');
-const content = 'eval(atob(\'' + b64 + '\'))';
+// jsDelivr CDN 地址
+const CDN_URL = 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@master/wardrobe-plugin.js';
+const content = "import '" + CDN_URL + "'";
 
 const config = {
   type: "script",
@@ -19,6 +18,5 @@ const config = {
 
 fs.writeFileSync('wardrobe-plugin.json', JSON.stringify(config, null, 2), 'utf-8');
 console.log('✅ wardrobe-plugin.json 已生成');
-console.log('原始 JS:', js.length, 'chars');
-console.log('Base64 长度:', b64.length, 'chars');
-console.log('Content 长度:', content.length, 'chars');
+console.log('CDN:', CDN_URL);
+console.log('Content:', content);
