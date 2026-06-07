@@ -89,6 +89,58 @@
   styleEl.textContent = css;
   document.head.appendChild(styleEl);
 
+  // ========== 数据管理 ==========
+  var STORAGE_KEY = 'wardrobe_plugin_data';
+
+  function defaultState() {
+    return {
+      categories: {
+        clothes: ['默认'],
+        hairstyles: ['默认']
+      },
+      items: [],
+      selected: { clothes: null, hairstyle: null }
+    };
+  }
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {
+      console.warn('[衣橱] 数据读取失败，使用默认数据', e);
+    }
+    return defaultState();
+  }
+
+  function saveState(state) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch(e) {
+      if (e.name === 'QuotaExceededError') {
+        alert('[衣橱] 存储空间不足！请导出备份后清理旧数据。');
+      } else {
+        console.error('[衣橱] 保存失败', e);
+      }
+    }
+  }
+
+  function genId() {
+    return crypto.randomUUID ? crypto.randomUUID() :
+      'xxxx-xxxx-4xxx-yxxx-xxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8);
+        return v.toString(16);
+      });
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  var state = loadState();
+
   // ========== DOM 构建 ==========
   function buildUI() {
     // 触发按钮
@@ -190,4 +242,264 @@
       }
     });
   })();
+
+  // ========== 分类渲染 ==========
+  var currentFilter = { type: 'clothes', category: null };
+
+  function renderCategories() {
+    ['clothes','hairstyles'].forEach(function(type) {
+      var container = type === 'clothes' ? dom.catsClothes : dom.catsHairstyles;
+      container.innerHTML = '';
+
+      // "全部"选项
+      var allEl = document.createElement('div');
+      allEl.className = 'wdp-cat-item';
+      if (currentFilter.type === type && currentFilter.category === null) {
+        allEl.classList.add('wdp-cat-item--active');
+      }
+      allEl.textContent = '全部';
+      allEl.addEventListener('click', function() {
+        currentFilter.type = type;
+        currentFilter.category = null;
+        renderCategories();
+        renderItems();
+      });
+      container.appendChild(allEl);
+
+      // 各子分类
+      (state.categories[type] || []).forEach(function(cat) {
+        var el = document.createElement('div');
+        el.className = 'wdp-cat-item';
+        if (currentFilter.type === type && currentFilter.category === cat) {
+          el.classList.add('wdp-cat-item--active');
+        }
+        el.innerHTML = '<span>' + escapeHtml(cat) + '</span>';
+        el.querySelector('span').addEventListener('click', function() {
+          currentFilter.type = type;
+          currentFilter.category = cat;
+          renderCategories();
+          renderItems();
+        });
+
+        // 删除分类按钮
+        var delBtn = document.createElement('button');
+        delBtn.className = 'wdp-cat-del';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (!confirm('删除分类 "' + cat + '"？分类下的物品将移至"默认"。')) return;
+          state.items.forEach(function(item) {
+            if (item.type === type && item.category === cat) {
+              item.category = '默认';
+            }
+          });
+          state.categories[type] = state.categories[type].filter(function(c) { return c !== cat; });
+          if (currentFilter.category === cat) currentFilter.category = null;
+          saveState(state);
+          renderCategories();
+          renderItems();
+        });
+        el.appendChild(delBtn);
+        container.appendChild(el);
+      });
+
+      // "+"添加分类
+      var addBtn = document.createElement('button');
+      addBtn.className = 'wdp-cat-add';
+      addBtn.textContent = '+ 新分类';
+      addBtn.addEventListener('click', function() {
+        var name = prompt('新分类名称：');
+        if (!name || !name.trim()) return;
+        name = name.trim();
+        if (state.categories[type].indexOf(name) !== -1) {
+          alert('分类 "' + name + '" 已存在');
+          return;
+        }
+        state.categories[type].push(name);
+        saveState(state);
+        renderCategories();
+      });
+      container.appendChild(addBtn);
+    });
+  }
+
+  // ========== 物品渲染 ==========
+  function renderItems() {
+    var filtered = state.items.filter(function(item) {
+      if (item.type !== currentFilter.type) return false;
+      if (currentFilter.category !== null && item.category !== currentFilter.category) return false;
+      return true;
+    });
+
+    dom.mainTitle.textContent =
+      (currentFilter.type === 'clothes' ? '👘 ' : '💇 ') +
+      (currentFilter.category || '全部' + (currentFilter.type === 'clothes' ? '衣服' : '发型')) +
+      '（' + filtered.length + '）';
+
+    dom.grid.innerHTML = '';
+
+    if (filtered.length === 0) {
+      dom.empty.style.display = 'block';
+      return;
+    }
+    dom.empty.style.display = 'none';
+
+    filtered.forEach(function(item) {
+      var card = document.createElement('div');
+      card.className = 'wdp-card';
+      var selectedId = currentFilter.type === 'clothes'
+        ? state.selected.clothes
+        : state.selected.hairstyle;
+      if (item.id === selectedId) {
+        card.classList.add('wdp-card--selected');
+      }
+
+      // 图片
+      if (item.imageUrl) {
+        var img = document.createElement('img');
+        img.src = item.imageUrl;
+        img.alt = item.name;
+        img.addEventListener('error', function() {
+          img.replaceWith(buildImgError());
+        });
+        card.appendChild(img);
+      } else {
+        card.appendChild(buildImgError());
+      }
+
+      card.innerHTML +=
+        '<div class="wdp-card-name">' + escapeHtml(item.name) + '</div>' +
+        '<div class="wdp-card-desc">' + escapeHtml(item.promptText || '(无描述)') + '</div>' +
+        '<div class="wdp-card-badge">✓ 已选</div>' +
+        '<div class="wdp-card-actions">' +
+          '<button class="wdp-edit-btn">✏️</button>' +
+          '<button class="wdp-del-btn">🗑️</button>' +
+        '</div>';
+
+      // 点击卡片选中
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('button')) return;
+        var key = currentFilter.type === 'clothes' ? 'clothes' : 'hairstyle';
+        if (state.selected[key] === item.id) {
+          state.selected[key] = null;
+        } else {
+          state.selected[key] = item.id;
+        }
+        saveState(state);
+        renderItems();
+      });
+
+      // 编辑按钮
+      card.querySelector('.wdp-edit-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        openForm(item);
+      });
+
+      // 删除按钮
+      card.querySelector('.wdp-del-btn').addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!confirm('确定删除 "' + item.name + '"？')) return;
+        if (state.selected.clothes === item.id) state.selected.clothes = null;
+        if (state.selected.hairstyle === item.id) state.selected.hairstyle = null;
+        state.items = state.items.filter(function(i) { return i.id !== item.id; });
+        saveState(state);
+        renderItems();
+      });
+
+      dom.grid.appendChild(card);
+    });
+  }
+
+  function buildImgError() {
+    var el = document.createElement('div');
+    el.className = 'wdp-img-error';
+    el.textContent = '🖼️';
+    return el;
+  }
+
+  // ========== 物品表单弹窗 ==========
+  function openForm(editItem) {
+    var isEdit = !!editItem;
+    var item = editItem || {
+      id: '', type: currentFilter.type, name: '', imageUrl: '',
+      promptText: '', category: (state.categories[currentFilter.type] || ['默认'])[0]
+    };
+
+    var cats = state.categories[currentFilter.type] || [];
+    var catOptions = cats.map(function(c) {
+      return '<option value="' + escapeHtml(c) + '"' +
+        (c === item.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+    }).join('');
+
+    dom.overlay.innerHTML =
+      '<div class="wdp-modal">' +
+        '<h4>' + (isEdit ? '编辑' : '添加') + (currentFilter.type === 'clothes' ? '衣服' : '发型') + '</h4>' +
+        '<label>名称 *</label>' +
+        '<input id="wdp-form-name" value="' + escapeHtml(item.name) + '" placeholder="例如：黑色晚礼服">' +
+        '<label>图片 URL</label>' +
+        '<input id="wdp-form-url" value="' + escapeHtml(item.imageUrl) + '" placeholder="https://...">' +
+        '<label>提示词描述</label>' +
+        '<textarea id="wdp-form-text" placeholder="例如：穿着黑色丝质晚礼服，裙摆曳地">' + escapeHtml(item.promptText) + '</textarea>' +
+        '<label>分类</label>' +
+        '<select id="wdp-form-cat">' + catOptions + '</select>' +
+        '<div class="wdp-modal-btns">' +
+          '<button class="wdp-btn-secondary" id="wdp-form-cancel">取消</button>' +
+          '<button class="wdp-btn-primary" id="wdp-form-save">保存</button>' +
+        '</div>' +
+      '</div>';
+    dom.overlay.classList.add('wdp-modal-overlay--visible');
+
+    document.getElementById('wdp-form-cancel').addEventListener('click', closeForm);
+    dom.overlay.addEventListener('click', function(e) {
+      if (e.target === dom.overlay) closeForm();
+    });
+    document.getElementById('wdp-form-save').addEventListener('click', function() {
+      var name = document.getElementById('wdp-form-name').value.trim();
+      if (!name) { alert('名称不能为空'); return; }
+      var imageUrl = document.getElementById('wdp-form-url').value.trim();
+      var promptText = document.getElementById('wdp-form-text').value.trim();
+      var category = document.getElementById('wdp-form-cat').value;
+
+      if (isEdit) {
+        var idx = state.items.findIndex(function(i) { return i.id === item.id; });
+        if (idx !== -1) {
+          state.items[idx].name = name;
+          state.items[idx].imageUrl = imageUrl;
+          state.items[idx].promptText = promptText;
+          state.items[idx].category = category;
+        }
+      } else {
+        state.items.push({
+          id: genId(),
+          type: currentFilter.type,
+          name: name,
+          imageUrl: imageUrl,
+          promptText: promptText,
+          category: category
+        });
+      }
+      saveState(state);
+      closeForm();
+      renderItems();
+    });
+  }
+
+  function closeForm() {
+    dom.overlay.classList.remove('wdp-modal-overlay--visible');
+    dom.overlay.innerHTML = '';
+  }
+
+  // 绑定添加按钮
+  document.getElementById('wdp-btn-add').addEventListener('click', function() {
+    if (state.categories[currentFilter.type].length === 0) {
+      state.categories[currentFilter.type].push('默认');
+      saveState(state);
+      renderCategories();
+    }
+    openForm(null);
+  });
+
+  // ========== 初始化渲染 ==========
+  renderCategories();
+  renderItems();
 })();
