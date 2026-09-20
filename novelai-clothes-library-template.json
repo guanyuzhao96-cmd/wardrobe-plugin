@@ -1,0 +1,43 @@
+{
+  "filter_groups": [
+    { "id": "persona", "label": "角色阶段", "options": ["少女", "大学生", "熟女"] },
+    { "id": "style", "label": "风格", "options": ["清纯", "性感", "火辣"] },
+    { "id": "occasion", "label": "场景", "options": ["日常", "正装", "制服", "睡衣"] },
+    { "id": "special", "label": "特殊类型", "options": ["情趣"] }
+  ],
+  "items": [
+    {
+      "display_name": "大学生水手制服",
+      "name": "sailor uniform",
+      "prompt": "white short sleeves, navy blue sailor collar, navy blue pleated skirt, knee socks, brown loafers",
+      "filters": {
+        "persona": ["大学生"],
+        "style": ["清纯"],
+        "occasion": ["制服"],
+        "special": []
+      }
+    },
+    {
+      "display_name": "成熟丝绸睡裙",
+      "name": "silk nightgown",
+      "prompt": "pale pink silk, spaghetti straps, lace trim, thigh length",
+      "filters": {
+        "persona": ["熟女"],
+        "style": ["性感"],
+        "occasion": ["睡衣"],
+        "special": []
+      }
+    },
+    {
+      "display_name": "火辣情趣女仆装",
+      "name": "sexy maid dress",
+      "prompt": "black and white maid dress, frills, apron, thighhighs, garter straps",
+      "filters": {
+        "persona": ["大学生"],
+        "style": ["火辣", "性感"],
+        "occasion": ["制服"],
+        "special": ["情趣"]
+      }
+    }
+  ]
+}
