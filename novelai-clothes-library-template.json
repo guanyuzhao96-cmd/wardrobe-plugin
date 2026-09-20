@@ -1,9 +1,9 @@
 {
   "filter_groups": [
-    { "id": "persona", "label": "角色阶段", "options": ["少女", "大学生", "熟女"] },
-    { "id": "style", "label": "风格", "options": ["清纯", "性感", "火辣"] },
-    { "id": "occasion", "label": "场景", "options": ["日常", "正装", "制服", "睡衣"] },
-    { "id": "special", "label": "特殊类型", "options": ["情趣"] }
+    { "id": "persona", "label": "角色阶段", "options": ["少女", "大学生", "研究生", "职场新人", "白领", "轻熟女", "熟女"] },
+    { "id": "style", "label": "风格", "options": ["清纯", "甜美", "温柔", "学院", "休闲", "知性", "优雅", "复古", "辣妹", "性感", "火辣", "御姐", "酷飒"] },
+    { "id": "occasion", "label": "场景", "options": ["日常", "校园", "通勤", "约会", "旅行", "运动", "居家", "派对", "晚宴", "海边", "正装", "制服"] },
+    { "id": "special", "label": "特殊类型", "options": ["泳装", "内衣", "情趣", "角色扮演", "SM", "睡衣"] }
   ],
   "items": [
     {
@@ -24,8 +24,8 @@
       "filters": {
         "persona": ["熟女"],
         "style": ["性感"],
-        "occasion": ["睡衣"],
-        "special": []
+        "occasion": ["居家"],
+        "special": ["睡衣"]
       }
     },
     {
@@ -36,7 +36,7 @@
         "persona": ["大学生"],
         "style": ["火辣", "性感"],
         "occasion": ["制服"],
-        "special": ["情趣"]
+        "special": ["情趣", "角色扮演"]
       }
     }
   ]
