@@ -1,672 +1,227 @@
-(function() {
+(function () {
   'use strict';
-  if (window.__wdp_loaded) return;
-  window.__wdp_loaded = true;
-  console.log('[衣橱] 插件已加载');
+  if (window.__nai_wardrobe_v2_loaded) return;
+  window.__nai_wardrobe_v2_loaded = true;
 
-  // ========== 顶层窗口定位 ==========
-  // 酒馆助手在 sandbox 中执行脚本，viewport 为 0×0，需要跳到 top window
-  var topWin, topDoc;
+  var topWin;
+  var topDoc;
   try {
     topWin = window.top;
     topDoc = topWin.document;
-    console.log('[衣橱] top window accessible:', topWin !== window);
-  } catch(e) {
-    console.log('[衣橱] top window blocked, using current');
+  } catch (error) {
     topWin = window;
     topDoc = document;
   }
 
-  // DOM 就绪后初始化
+  var STORAGE_KEY = 'nai_wardrobe_library_v2';
+  var LEGACY_STORAGE_KEY = 'wardrobe_plugin_data';
+  var library = null;
+  var activeFilters = {};
+  var dom = {};
+
+  function text(value) { return typeof value === 'string' ? value.trim() : ''; }
+
+  function normaliseItem(item, place, filters) {
+    var name = text(item && item.name);
+    var prompt = text(item && item.prompt);
+    var displayName = text(item && item.display_name) || name;
+    if (!name) throw new Error(place + ' 缺少 name。');
+    if (!prompt) throw new Error(place + ' 的“' + displayName + '”缺少 prompt。');
+    return { name: name, prompt: prompt, displayName: displayName, filters: filters };
+  }
+
+  function normaliseV2(data) {
+    var ids = {};
+    var groups = data.filter_groups.map(function (group, groupIndex) {
+      var id = text(group && group.id);
+      var label = text(group && group.label);
+      var rawOptions = Array.isArray(group && group.options) ? group.options : [];
+      var options = rawOptions.map(text).filter(Boolean).filter(function (value, index, values) { return values.indexOf(value) === index; });
+      if (!/^[a-z][a-z0-9_-]*$/i.test(id)) throw new Error('第 ' + (groupIndex + 1) + ' 个筛选组的 id 必须为英文、数字、下划线或连字符。');
+      if (ids[id]) throw new Error('筛选组 id “' + id + '”重复。');
+      if (!label || !options.length) throw new Error('筛选组“' + id + '”缺少 label 或 options。');
+      ids[id] = true;
+      return { id: id, label: label, options: options };
+    });
+    if (!groups.length || !data.items.length) throw new Error('filter_groups 和 items 不能为空。');
+    var items = data.items.map(function (item, itemIndex) {
+      var filters = {};
+      groups.forEach(function (group) {
+        var raw = item && item.filters ? item.filters[group.id] : [];
+        var values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+        var clean = values.map(text).filter(Boolean).filter(function (value, index, all) { return all.indexOf(value) === index; });
+        var invalid = clean.filter(function (value) { return group.options.indexOf(value) === -1; })[0];
+        if (invalid) throw new Error('第 ' + (itemIndex + 1) + ' 套衣服的“' + group.label + '”含有未定义标签“' + invalid + '”。');
+        filters[group.id] = clean;
+      });
+      return normaliseItem(item, '第 ' + (itemIndex + 1) + ' 套衣服', filters);
+    });
+    return { filterGroups: groups, items: items };
+  }
+
+  function normaliseLegacy(data) {
+    if (!Array.isArray(data && data.categories) || !data.categories.length) throw new Error('根节点必须包含 filter_groups + items。');
+    var categoryNames = [];
+    var items = [];
+    data.categories.forEach(function (category, categoryIndex) {
+      var categoryName = text(category && category.name);
+      if (!categoryName || !Array.isArray(category.items)) throw new Error('旧格式第 ' + (categoryIndex + 1) + ' 个分类不正确。');
+      categoryNames.push(categoryName);
+      category.items.forEach(function (item, itemIndex) {
+        items.push(normaliseItem(item, '分类“' + categoryName + '”的第 ' + (itemIndex + 1) + ' 套衣服', { category: [categoryName] }));
+      });
+    });
+    return { filterGroups: [{ id: 'category', label: '分类', options: categoryNames.filter(function (value, index, all) { return all.indexOf(value) === index; }) }], items: items };
+  }
+
+  function normaliseLibrary(data) {
+    if (!data || typeof data !== 'object') throw new Error('JSON 根节点必须是对象。');
+    return Array.isArray(data.filter_groups) && Array.isArray(data.items) ? normaliseV2(data) : normaliseLegacy(data);
+  }
+
+  function loadLibrary() {
+    try {
+      var raw = topWin.localStorage.getItem(STORAGE_KEY);
+      return raw ? normaliseLibrary(JSON.parse(raw)) : null;
+    } catch (error) {
+      console.warn('[衣橱] 本地衣服库读取失败', error);
+      return null;
+    }
+  }
+
+  function saveLibrary(data) { topWin.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  function countItems(data) { return data.items.length; }
+
+  function injectStyle() {
+    if (topDoc.getElementById('nai-wardrobe-v2-style')) return;
+    var style = topDoc.createElement('style');
+    style.id = 'nai-wardrobe-v2-style';
+    style.textContent = [
+      '.naw-fab{position:fixed;right:14px;bottom:84px;z-index:2147483646;display:flex;align-items:center;gap:6px;min-height:42px;padding:0 14px;border:1px solid #667085;border-radius:999px;background:#3730a3;color:#fff;font:700 14px/1 Arial,"Microsoft YaHei",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.28);cursor:pointer}',
+      '.naw-mask{position:fixed;inset:0;z-index:2147483647;display:none;align-items:flex-end;justify-content:center;padding:16px;background:rgba(0,0,0,.55);font-family:Arial,"Microsoft YaHei",sans-serif}.naw-mask.open{display:flex}',
+      '.naw-panel{box-sizing:border-box;width:min(680px,100%);max-height:min(78vh,700px);overflow:auto;padding:18px;border:1px solid #5a6070;border-radius:18px;background:#22242d;color:#f4f5f7;box-shadow:0 18px 48px rgba(0,0,0,.45)}',
+      '.naw-header{display:flex;justify-content:space-between;gap:12px}.naw-header h3{margin:0;font-size:18px}.naw-status{margin:4px 0 0;color:#aeb6c5;font-size:12px}.naw-close{width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:#fff;font-size:27px;cursor:pointer}',
+      '.naw-tools{display:flex;align-items:center;gap:10px;margin-top:16px}.naw-import,.naw-clear{box-sizing:border-box;min-height:36px;padding:8px 12px;border:1px solid #667085;border-radius:9px;background:#4f46e5;color:#fff;font-size:13px;font-weight:700;cursor:pointer}.naw-clear{background:transparent}.naw-message{min-height:18px;margin:10px 0 0;color:#aeb6c5;font-size:13px}.naw-message.error{color:#ff9b9b}.naw-message.success{color:#92dd9b}',
+      '.naw-filters{display:grid;gap:12px;margin-top:12px}.naw-filter-group{display:grid;gap:7px}.naw-filter-group h4{margin:0;color:#b8c0cf;font-size:12px}.naw-filter-options{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}.naw-filter{flex:0 0 auto;min-height:34px;padding:6px 12px;border:1px solid #5f6878;border-radius:999px;background:transparent;color:#f4f5f7;font-size:13px;cursor:pointer}.naw-filter.active{border-color:transparent;background:#4f46e5;color:#fff}',
+      '.naw-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.naw-item{display:grid;gap:6px;min-width:0;padding:13px;border:1px solid #5b6575;border-radius:12px;background:#2b2e38;color:#f4f5f7;text-align:left;cursor:pointer}.naw-item:hover{border-color:#8c92ff}.naw-item strong{overflow:hidden;font-size:14px;text-overflow:ellipsis;white-space:nowrap}.naw-item span{display:-webkit-box;overflow:hidden;color:#b8c0cf;font-size:12px;line-height:1.4;-webkit-box-orient:vertical;-webkit-line-clamp:2}.naw-empty{padding:28px 12px;border:1px dashed #667085;border-radius:12px;color:#b8c0cf;text-align:center}',
+      '@media(max-width:540px){.naw-fab{right:12px;bottom:72px;min-height:38px;padding:0 12px}.naw-mask{padding:0}.naw-panel{width:100%;max-height:82vh;padding:16px;border-right:0;border-bottom:0;border-left:0;border-radius:18px 18px 0 0}.naw-items{grid-template-columns:1fr}}'
+    ].join('');
+    topDoc.head.appendChild(style);
+  }
+
+  function makeButton(className, label) {
+    var button = topDoc.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = label;
+    return button;
+  }
+
+  function setMessage(message, type) {
+    dom.message.textContent = message || '';
+    dom.message.className = 'naw-message' + (type ? ' ' + type : '');
+  }
+
+  function closePanel() { dom.mask.classList.remove('open'); }
+
+  function toggleFilter(groupId, option) {
+    var selected = activeFilters[groupId] || [];
+    activeFilters[groupId] = selected.indexOf(option) >= 0 ? selected.filter(function (value) { return value !== option; }) : selected.concat([option]);
+    if (!activeFilters[groupId].length) delete activeFilters[groupId];
+    render();
+  }
+
+  function appendOutfit(item) {
+    var textarea = topDoc.querySelector('#send_textarea, textarea[id*="send"], textarea[id*="message"]');
+    if (!textarea) { setMessage('未找到酒馆输入框，请先打开一个聊天。', 'error'); return; }
+    var previous = textarea.value || '';
+    textarea.value = previous + (previous.trim() ? '\n' : '') + item.name + ', ' + item.prompt;
+    textarea.dispatchEvent(new topWin.Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new topWin.Event('change', { bubbles: true }));
+    textarea.focus();
+    if (textarea.setSelectionRange) textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    closePanel();
+  }
+
+  function render() {
+    dom.filters.innerHTML = '';
+    dom.items.innerHTML = '';
+    setMessage('');
+    if (!library) {
+      dom.status.textContent = '尚未导入衣服库';
+      dom.clear.hidden = true;
+      var empty = topDoc.createElement('div'); empty.className = 'naw-empty'; empty.textContent = '请先导入符合格式的 JSON 衣服库。'; dom.items.appendChild(empty);
+      return;
+    }
+    dom.status.textContent = '已保存 ' + library.filterGroups.length + ' 组筛选，' + countItems(library) + ' 套衣服';
+    dom.clear.hidden = false;
+    library.filterGroups.forEach(function (group) {
+      var section = topDoc.createElement('section'); section.className = 'naw-filter-group';
+      var heading = topDoc.createElement('h4'); heading.textContent = group.label;
+      var options = topDoc.createElement('div'); options.className = 'naw-filter-options';
+      var all = makeButton('naw-filter' + (!(activeFilters[group.id] || []).length ? ' active' : ''), '全部');
+      all.addEventListener('click', function () { delete activeFilters[group.id]; render(); }); options.appendChild(all);
+      group.options.forEach(function (option) {
+        var button = makeButton('naw-filter' + ((activeFilters[group.id] || []).indexOf(option) >= 0 ? ' active' : ''), option);
+        button.addEventListener('click', function () { toggleFilter(group.id, option); }); options.appendChild(button);
+      });
+      section.appendChild(heading); section.appendChild(options); dom.filters.appendChild(section);
+    });
+    var visible = library.items.filter(function (item) {
+      return library.filterGroups.every(function (group) {
+        var selected = activeFilters[group.id] || [];
+        return !selected.length || selected.some(function (value) { return (item.filters[group.id] || []).indexOf(value) >= 0; });
+      });
+    });
+    if (!visible.length) { var noResult = topDoc.createElement('div'); noResult.className = 'naw-empty'; noResult.textContent = '没有符合当前筛选条件的衣服。'; dom.items.appendChild(noResult); }
+    visible.forEach(function (item) {
+      var card = makeButton('naw-item', '');
+      var title = topDoc.createElement('strong'); title.textContent = item.displayName;
+      var tags = topDoc.createElement('span'); tags.textContent = item.name + ', ' + item.prompt;
+      card.appendChild(title); card.appendChild(tags); card.addEventListener('click', function () { appendOutfit(item); }); dom.items.appendChild(card);
+    });
+  }
+
+  function importLibrary(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    var reader = new topWin.FileReader();
+    reader.onload = function () {
+      try {
+        var imported = normaliseLibrary(JSON.parse(reader.result));
+        if (library && !topWin.confirm('导入新衣服库会替换当前已保存的衣服库，继续吗？')) return;
+        library = imported; activeFilters = {}; saveLibrary(imported); render(); setMessage('导入成功：' + imported.filterGroups.length + ' 组筛选，' + countItems(imported) + ' 套衣服。', 'success');
+      } catch (error) { setMessage('导入失败：' + (error.message || '请检查 JSON 文件。'), 'error'); }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function build() {
+    injectStyle();
+    var trigger = makeButton('naw-fab', '👗 衣服');
+    var mask = topDoc.createElement('div'); mask.className = 'naw-mask';
+    var panel = topDoc.createElement('section'); panel.className = 'naw-panel';
+    panel.innerHTML = '<header class="naw-header"><div><h3>NovelAI 衣服库</h3><p class="naw-status"></p></div><button class="naw-close" type="button" aria-label="关闭">×</button></header><div class="naw-tools"><label class="naw-import">导入 JSON<input type="file" accept="application/json,.json" hidden></label><button class="naw-clear" type="button" hidden>清除衣服库</button></div><p class="naw-message"></p><div class="naw-filters"></div><div class="naw-items"></div>';
+    mask.appendChild(panel); topDoc.body.appendChild(trigger); topDoc.body.appendChild(mask);
+    dom = { mask: mask, status: panel.querySelector('.naw-status'), clear: panel.querySelector('.naw-clear'), message: panel.querySelector('.naw-message'), filters: panel.querySelector('.naw-filters'), items: panel.querySelector('.naw-items') };
+    trigger.addEventListener('click', function () { mask.classList.add('open'); render(); });
+    panel.querySelector('.naw-close').addEventListener('click', closePanel);
+    mask.addEventListener('click', function (event) { if (event.target === mask) closePanel(); });
+    panel.querySelector('input[type="file"]').addEventListener('change', importLibrary);
+    dom.clear.addEventListener('click', function () {
+      if (!library || !topWin.confirm('确定清除已保存的衣服库吗？不会删除原始 JSON 文件。')) return;
+      topWin.localStorage.removeItem(STORAGE_KEY); library = null; activeFilters = {}; render(); setMessage('已清除本地保存的衣服库。', 'success');
+    });
+    topDoc.addEventListener('keydown', function (event) { if (event.key === 'Escape') closePanel(); });
+  }
+
   function init() {
-    var body = topDoc.body;
-    if (!body) { console.log('[衣橱] 等待 body...'); setTimeout(init, 100); return; }
-    console.log('[衣橱] 开始构建 UI...');
-    console.log('[衣橱] body visible:', body.getBoundingClientRect().width > 0);
-    console.log('[衣橱] viewport:', topWin.innerWidth + 'x' + topWin.innerHeight);
-    try {
-
-  // ========== CSS 注入 ==========
-  var css = [
-    '.wdp-trigger{position:fixed;bottom:24px;right:24px;width:48px;height:48px;',
-    'border-radius:50%;background:#6366f1;color:#fff;border:none;font-size:24px;',
-    'cursor:pointer;z-index:2147483647;box-shadow:0 4px 16px rgba(99,102,241,.4);',
-    'display:flex;align-items:center;justify-content:center;transition:transform .2s;}',
-    '.wdp-trigger:hover{transform:scale(1.1);}',
-    '.wdp-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);',
-    'width:780px;height:560px;background:#1e1e2e;border-radius:16px;',
-    'box-shadow:0 8px 40px rgba(0,0,0,.5);z-index:2147483646;display:none;',
-    'flex-direction:column;color:#e0e0e0;font-family:"Microsoft YaHei",sans-serif;}',
-    '.wdp-panel--visible{display:flex;}',
-    '.wdp-header{display:flex;align-items:center;justify-content:space-between;',
-    'padding:12px 16px;background:#2a2a3e;border-radius:16px 16px 0 0;cursor:move;',
-    'user-select:none;}',
-    '.wdp-header h3{margin:0;font-size:16px;}',
-    '.wdp-close{background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;}',
-    '.wdp-close:hover{color:#fff;}',
-    '.wdp-body{display:flex;flex:1;overflow:hidden;}',
-    '.wdp-sidebar{width:160px;padding:12px;border-right:1px solid #3a3a4e;',
-    'overflow-y:auto;flex-shrink:0;}',
-    '.wdp-sidebar h4{font-size:13px;margin:0 0 6px;color:#aaa;}',
-    '.wdp-cat-item{padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;',
-    'margin-bottom:2px;transition:background .15s;}',
-    '.wdp-cat-item:hover{background:#2a2a3e;}',
-    '.wdp-cat-item--active{background:#6366f1;color:#fff;}',
-    '.wdp-cat-add{background:none;border:1px dashed #555;color:#888;width:100%;',
-    'padding:4px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:8px;}',
-    '.wdp-cat-add:hover{border-color:#888;color:#ccc;}',
-    '.wdp-cat-del{float:right;opacity:0;color:#f66;background:none;border:none;',
-    'cursor:pointer;font-size:12px;}',
-    '.wdp-cat-item:hover .wdp-cat-del{opacity:1;}',
-    '.wdp-main{flex:1;padding:12px;overflow-y:auto;}',
-    '.wdp-main-header{display:flex;justify-content:space-between;align-items:center;',
-    'margin-bottom:12px;}',
-    '.wdp-main-header h4{margin:0;font-size:14px;}',
-    '.wdp-add-btn{background:#6366f1;color:#fff;border:none;padding:6px 14px;',
-    'border-radius:8px;cursor:pointer;font-size:13px;}',
-    '.wdp-add-btn:hover{background:#5558e6;}',
-    '.wdp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}',
-    '.wdp-card{border:2px solid #3a3a4e;border-radius:6px;padding:4px;',
-    'text-align:center;cursor:pointer;transition:border .15s,background .15s;',
-    'position:relative;}',
-    '.wdp-card:hover{border-color:#555;}',
-    '.wdp-card--selected{border-color:#6366f1;background:rgba(99,102,241,.1);}',
-    '.wdp-card img{width:100%;height:auto;max-height:140px;object-fit:contain;border-radius:4px;',
-    'background:#2a2a3e;}',
-    '.wdp-card .wdp-card-name{font-size:11px;font-weight:bold;margin:2px 0 0;}',
-    '.wdp-card .wdp-card-desc{font-size:9px;color:#999;overflow:hidden;',
-    'text-overflow:ellipsis;white-space:nowrap;}',
-    '.wdp-card .wdp-card-badge{position:absolute;top:4px;right:4px;',
-    'background:#6366f1;color:#fff;font-size:8px;padding:1px 4px;',
-    'border-radius:3px;display:none;}',
-    '.wdp-card--selected .wdp-card-badge{display:block;}',
-    '.wdp-card-actions{display:flex;justify-content:center;gap:3px;margin-top:2px;}',
-    '.wdp-card-actions button{background:#2a2a3e;border:1px solid #555;cursor:pointer;',
-    'font-size:10px;color:#ccc;padding:1px 6px;border-radius:3px;margin:0;}',
-    '.wdp-card-actions button:hover{background:#6366f1;border-color:#6366f1;color:#fff;}',
-    '.wdp-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);',
-    'z-index:2147483647;display:none;align-items:center;justify-content:center;}',
-    '.wdp-modal-overlay--visible{display:flex;}',
-    '.wdp-modal{background:#1e1e2e;border-radius:12px;padding:20px;width:420px;',
-    'max-height:80vh;overflow-y:auto;}',
-    '.wdp-modal h4{margin:0 0 16px;font-size:15px;}',
-    '.wdp-modal label{display:block;font-size:12px;color:#aaa;margin-bottom:4px;',
-    'margin-top:12px;}',
-    '.wdp-modal input,.wdp-modal select,.wdp-modal textarea{width:100%;',
-    'padding:8px;border:1px solid #3a3a4e;border-radius:6px;background:#2a2a3e;',
-    'color:#e0e0e0;font-size:13px;box-sizing:border-box;}',
-    '.wdp-modal textarea{height:60px;resize:vertical;}',
-    '.wdp-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}',
-    '.wdp-modal-btns button{padding:8px 20px;border-radius:8px;cursor:pointer;',
-    'font-size:13px;}',
-    '.wdp-btn-primary{background:#6366f1;color:#fff;border:none;}',
-    '.wdp-btn-secondary{background:transparent;color:#aaa;border:1px solid #555;}',
-    '.wdp-img-error{background:#2a2a3e;height:140px;display:flex;align-items:center;',
-    'justify-content:center;font-size:32px;border-radius:6px;color:#666;}',
-    '.wdp-empty{padding:40px;text-align:center;color:#666;font-size:14px;}',
-    '.wdp-toolbar{display:flex;gap:6px;}'
-  ].join('');
-
-  var styleEl = document.createElement('style');
-  styleEl.textContent = css;
-  topDoc.head.appendChild(styleEl);
-
-  // ========== 查找酒馆可见容器 ==========
-  var containerSelectors = [
-    '#app', '#root', '#chat', '#main', '#sheld',
-    '#send_textarea', '#send_but',
-    '.main-container', '.app-container', '.chat-container',
-    '[id*="send"]', 'textarea'
-  ];
-  containerSelectors.forEach(function(sel) {
-    var el = topDoc.querySelector(sel);
-    if (el) {
-      var r = el.getBoundingClientRect();
-      console.log('[衣橱] found:', sel, 'visible:', r.width > 0 && r.height > 0, 'size:', r.width + 'x' + r.height);
-    }
-  });
-  console.log('[衣橱] document.body children:', document.body.children.length);
-  console.log('[衣橱] document.body visible:', document.body.getBoundingClientRect().width > 0);
-
-  // ========== 数据管理 ==========
-  var STORAGE_KEY = 'wardrobe_plugin_data';
-
-  function defaultState() {
-    return {
-      categories: {
-        clothes: ['默认'],
-        hairstyles: ['默认']
-      },
-      items: [],
-      selected: { clothes: null, hairstyle: null }
-    };
+    if (!topDoc.body || topDoc.getElementById('nai-wardrobe-v2-style')) return topWin.setTimeout(init, 100);
+    library = loadLibrary();
+    build();
+    console.log('[衣橱] NovelAI 多维衣服库已加载');
   }
 
-  function loadState() {
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch(e) {
-      console.warn('[衣橱] 数据读取失败，使用默认数据', e);
-    }
-    return defaultState();
-  }
-
-  function saveState(state) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch(e) {
-      if (e.name === 'QuotaExceededError') {
-        alert('[衣橱] 存储空间不足！请导出备份后清理旧数据。');
-      } else {
-        console.error('[衣橱] 保存失败', e);
-      }
-    }
-  }
-
-  function genId() {
-    return crypto.randomUUID ? crypto.randomUUID() :
-      'xxxx-xxxx-4xxx-yxxx-xxxx'.replace(/[xy]/g, function(c) {
-        var r = Math.random()*16|0, v = c==='x'?r:(r&0x3|0x8);
-        return v.toString(16);
-      });
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  var state = loadState();
-
-  // ========== DOM 构建 ==========
-  function buildUI() {
-    // 触发按钮
-    var trigger = document.createElement('button');
-    trigger.className = 'wdp-trigger';
-    trigger.innerHTML = '👗';
-    trigger.title = '衣橱管理';
-    topDoc.body.appendChild(trigger);
-    console.log('[衣橱] trigger appended, in DOM:', document.body.contains(trigger));
-
-    // 浮窗面板
-    var panel = document.createElement('div');
-    panel.className = 'wdp-panel';
-    panel.innerHTML =
-      '<div class="wdp-header">' +
-        '<h3>👗 衣橱管理</h3>' +
-        '<button class="wdp-close">&times;</button>' +
-      '</div>' +
-      '<div class="wdp-body">' +
-        '<div class="wdp-sidebar">' +
-          '<h4>👘 衣服</h4>' +
-          '<div id="wdp-cats-clothes"></div>' +
-          '<h4 style="margin-top:16px;">💇 发型</h4>' +
-          '<div id="wdp-cats-hairstyles"></div>' +
-        '</div>' +
-        '<div class="wdp-main">' +
-          '<div class="wdp-main-header">' +
-            '<h4 id="wdp-main-title">全部衣服</h4>' +
-            '<div class="wdp-toolbar">' +
-              '<button class="wdp-add-btn" id="wdp-btn-add">+ 添加</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="wdp-grid" id="wdp-grid"></div>' +
-          '<div class="wdp-empty" id="wdp-empty" style="display:none;">暂无物品，点击"+ 添加"创建</div>' +
-        '</div>' +
-      '</div>';
-    topDoc.body.appendChild(panel);
-    console.log('[衣橱] panel appended, in DOM:', document.body.contains(panel));
-    var overlay = document.createElement('div');
-    overlay.className = 'wdp-modal-overlay';
-    overlay.id = 'wdp-overlay';
-    topDoc.body.appendChild(overlay);
-
-    return {
-      trigger: trigger,
-      panel: panel,
-      header: panel.querySelector('.wdp-header'),
-      catsClothes: panel.querySelector('#wdp-cats-clothes'),
-      catsHairstyles: panel.querySelector('#wdp-cats-hairstyles'),
-      mainTitle: panel.querySelector('#wdp-main-title'),
-      grid: panel.querySelector('#wdp-grid'),
-      empty: panel.querySelector('#wdp-empty'),
-      overlay: overlay
-    };
-  }
-
-  var dom = buildUI();
-
-  // 显示/隐藏
-  dom.trigger.addEventListener('click', function() {
-    dom.panel.classList.toggle('wdp-panel--visible');
-  });
-  dom.panel.querySelector('.wdp-close').addEventListener('click', function() {
-    dom.panel.classList.remove('wdp-panel--visible');
-  });
-
-  // ========== 拖拽 ==========
-  (function() {
-    var isDragging = false, startX, startY, startLeft, startTop;
-    dom.header.addEventListener('mousedown', function(e) {
-      if (e.target.tagName === 'BUTTON') return;
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      var rect = dom.panel.getBoundingClientRect();
-      startLeft = rect.left;
-      startTop = rect.top;
-      dom.panel.style.transition = 'none';
-      e.preventDefault();
-    });
-    topDoc.addEventListener('mousemove', function(e) {
-      if (!isDragging) return;
-      var dx = e.clientX - startX;
-      var dy = e.clientY - startY;
-      var left = startLeft + dx;
-      var top = startTop + dy;
-      var maxLeft = topWin.innerWidth - dom.panel.offsetWidth;
-      var maxTop = topWin.innerHeight - dom.panel.offsetHeight;
-      left = Math.max(0, Math.min(left, maxLeft));
-      top = Math.max(0, Math.min(top, maxTop));
-      dom.panel.style.left = left + 'px';
-      dom.panel.style.top = top + 'px';
-      dom.panel.style.transform = 'none';
-    });
-    topDoc.addEventListener('mouseup', function() {
-      if (isDragging) {
-        isDragging = false;
-        dom.panel.style.transition = '';
-      }
-    });
-  })();
-
-  // ========== 分类渲染 ==========
-  var currentFilter = { type: 'clothes', category: null };
-
-  function renderCategories() {
-    ['clothes','hairstyles'].forEach(function(type) {
-      var container = type === 'clothes' ? dom.catsClothes : dom.catsHairstyles;
-      container.innerHTML = '';
-
-      // "全部"选项
-      var allEl = document.createElement('div');
-      allEl.className = 'wdp-cat-item';
-      if (currentFilter.type === type && currentFilter.category === null) {
-        allEl.classList.add('wdp-cat-item--active');
-      }
-      allEl.textContent = '全部';
-      allEl.addEventListener('click', function() {
-        currentFilter.type = type;
-        currentFilter.category = null;
-        renderCategories();
-        renderItems();
-      });
-      container.appendChild(allEl);
-
-      // 各子分类
-      (state.categories[type] || []).forEach(function(cat) {
-        var el = document.createElement('div');
-        el.className = 'wdp-cat-item';
-        if (currentFilter.type === type && currentFilter.category === cat) {
-          el.classList.add('wdp-cat-item--active');
-        }
-        el.innerHTML = '<span>' + escapeHtml(cat) + '</span>';
-        el.querySelector('span').addEventListener('click', function() {
-          currentFilter.type = type;
-          currentFilter.category = cat;
-          renderCategories();
-          renderItems();
-        });
-
-        // 删除分类按钮
-        var delBtn = document.createElement('button');
-        delBtn.className = 'wdp-cat-del';
-        delBtn.textContent = '×';
-        delBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          if (!confirm('删除分类 "' + cat + '"？分类下的物品将移至"默认"。')) return;
-          state.items.forEach(function(item) {
-            if (item.type === type && item.category === cat) {
-              item.category = '默认';
-            }
-          });
-          state.categories[type] = state.categories[type].filter(function(c) { return c !== cat; });
-          if (currentFilter.category === cat) currentFilter.category = null;
-          saveState(state);
-          renderCategories();
-          renderItems();
-        });
-        el.appendChild(delBtn);
-        container.appendChild(el);
-      });
-
-      // "+"添加分类
-      var addBtn = document.createElement('button');
-      addBtn.className = 'wdp-cat-add';
-      addBtn.textContent = '+ 新分类';
-      addBtn.addEventListener('click', function() {
-        var name = prompt('新分类名称：');
-        if (!name || !name.trim()) return;
-        name = name.trim();
-        if (state.categories[type].indexOf(name) !== -1) {
-          alert('分类 "' + name + '" 已存在');
-          return;
-        }
-        state.categories[type].push(name);
-        saveState(state);
-        renderCategories();
-      });
-      container.appendChild(addBtn);
-    });
-  }
-
-  // ========== 物品渲染 ==========
-  function renderItems() {
-    var filtered = state.items.filter(function(item) {
-      if (item.type !== currentFilter.type) return false;
-      if (currentFilter.category !== null && item.category !== currentFilter.category) return false;
-      return true;
-    });
-
-    dom.mainTitle.textContent =
-      (currentFilter.type === 'clothes' ? '👘 ' : '💇 ') +
-      (currentFilter.category || '全部' + (currentFilter.type === 'clothes' ? '衣服' : '发型')) +
-      '（' + filtered.length + '）';
-
-    dom.grid.innerHTML = '';
-
-    if (filtered.length === 0) {
-      dom.empty.style.display = 'block';
-      return;
-    }
-    dom.empty.style.display = 'none';
-
-    filtered.forEach(function(item) {
-      var card = document.createElement('div');
-      card.className = 'wdp-card';
-      var selectedId = currentFilter.type === 'clothes'
-        ? state.selected.clothes
-        : state.selected.hairstyle;
-      if (item.id === selectedId) {
-        card.classList.add('wdp-card--selected');
-      }
-
-      // 图片
-      var imgHtml;
-      if (item.imageUrl) {
-        imgHtml = '<img src="' + escapeHtml(item.imageUrl) + '" alt="' + escapeHtml(item.name) + '" ' +
-          'onerror="this.replaceWith((function(){var e=document.createElement(\'div\');e.className=\'wdp-img-error\';e.textContent=\'🖼️\';return e;})())">';
-      } else {
-        imgHtml = '<div class="wdp-img-error">🖼️</div>';
-      }
-
-      card.innerHTML =
-        imgHtml +
-        '<div class="wdp-card-name">' + escapeHtml(item.name) + '</div>' +
-        '<div class="wdp-card-desc">' + escapeHtml(item.promptText || '(无描述)') + '</div>' +
-        '<div class="wdp-card-badge">✓ 已选</div>' +
-        '<div class="wdp-card-actions">' +
-          '<button class="wdp-edit-btn">✏️</button>' +
-          '<button class="wdp-del-btn">🗑️</button>' +
-        '</div>';
-
-      // 点击卡片选中
-      card.addEventListener('click', function(e) {
-        if (e.target.closest('button')) return;
-        var key = currentFilter.type === 'clothes' ? 'clothes' : 'hairstyle';
-        if (state.selected[key] === item.id) {
-          state.selected[key] = null;
-        } else {
-          state.selected[key] = item.id;
-        }
-        saveState(state);
-        renderItems();
-      });
-
-      // 编辑按钮
-      card.querySelector('.wdp-edit-btn').addEventListener('click', function(e) {
-        e.stopPropagation();
-        openForm(item);
-      });
-
-      // 删除按钮
-      card.querySelector('.wdp-del-btn').addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (!confirm('确定删除 "' + item.name + '"？')) return;
-        if (state.selected.clothes === item.id) state.selected.clothes = null;
-        if (state.selected.hairstyle === item.id) state.selected.hairstyle = null;
-        state.items = state.items.filter(function(i) { return i.id !== item.id; });
-        saveState(state);
-        renderItems();
-      });
-
-      dom.grid.appendChild(card);
-    });
-  }
-
-  function buildImgError() {
-    var el = document.createElement('div');
-    el.className = 'wdp-img-error';
-    el.textContent = '🖼️';
-    return el;
-  }
-
-  // ========== 物品表单弹窗 ==========
-  function openForm(editItem) {
-    var isEdit = !!editItem;
-    var item = editItem || {
-      id: '', type: currentFilter.type, name: '', imageUrl: '',
-      promptText: '', category: (state.categories[currentFilter.type] || ['默认'])[0]
-    };
-
-    var cats = state.categories[currentFilter.type] || [];
-    var catOptions = cats.map(function(c) {
-      return '<option value="' + escapeHtml(c) + '"' +
-        (c === item.category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
-    }).join('');
-
-    dom.overlay.innerHTML =
-      '<div class="wdp-modal">' +
-        '<h4>' + (isEdit ? '编辑' : '添加') + (currentFilter.type === 'clothes' ? '衣服' : '发型') + '</h4>' +
-        '<label>名称 *</label>' +
-        '<input id="wdp-form-name" value="' + escapeHtml(item.name) + '" placeholder="例如：黑色晚礼服">' +
-        '<label>图片 URL</label>' +
-        '<input id="wdp-form-url" value="' + escapeHtml(item.imageUrl) + '" placeholder="https://...">' +
-        '<label>提示词描述</label>' +
-        '<textarea id="wdp-form-text" placeholder="例如：穿着黑色丝质晚礼服，裙摆曳地">' + escapeHtml(item.promptText) + '</textarea>' +
-        '<label>分类</label>' +
-        '<select id="wdp-form-cat">' + catOptions + '</select>' +
-        '<div class="wdp-modal-btns">' +
-          '<button class="wdp-btn-secondary" id="wdp-form-cancel">取消</button>' +
-          '<button class="wdp-btn-primary" id="wdp-form-save">保存</button>' +
-        '</div>' +
-      '</div>';
-    dom.overlay.classList.add('wdp-modal-overlay--visible');
-
-    topDoc.getElementById('wdp-form-cancel').addEventListener('click', closeForm);
-    dom.overlay.addEventListener('click', function(e) {
-      if (e.target === dom.overlay) closeForm();
-    });
-    topDoc.getElementById('wdp-form-save').addEventListener('click', function() {
-      var name = topDoc.getElementById('wdp-form-name').value.trim();
-      if (!name) { alert('名称不能为空'); return; }
-      var imageUrl = topDoc.getElementById('wdp-form-url').value.trim();
-      var promptText = topDoc.getElementById('wdp-form-text').value.trim();
-      var category = topDoc.getElementById('wdp-form-cat').value;
-
-      if (isEdit) {
-        var idx = state.items.findIndex(function(i) { return i.id === item.id; });
-        if (idx !== -1) {
-          state.items[idx].name = name;
-          state.items[idx].imageUrl = imageUrl;
-          state.items[idx].promptText = promptText;
-          state.items[idx].category = category;
-        }
-      } else {
-        state.items.push({
-          id: genId(),
-          type: currentFilter.type,
-          name: name,
-          imageUrl: imageUrl,
-          promptText: promptText,
-          category: category
-        });
-      }
-      saveState(state);
-      closeForm();
-      renderItems();
-    });
-  }
-
-  function closeForm() {
-    dom.overlay.classList.remove('wdp-modal-overlay--visible');
-    dom.overlay.innerHTML = '';
-  }
-
-  // 绑定添加按钮
-  topDoc.getElementById('wdp-btn-add').addEventListener('click', function() {
-    if (state.categories[currentFilter.type].length === 0) {
-      state.categories[currentFilter.type].push('默认');
-      saveState(state);
-      renderCategories();
-    }
-    openForm(null);
-  });
-
-  // ========== 初始化渲染 ==========
-  renderCategories();
-  renderItems();
-
-  // ========== 提示词注入 ==========
-  var CONFIG = {
-    inputSelector: '#send_textarea, textarea[id*="send"], textarea[id*="message"]',
-    retryDelay: 2000,
-    injectionPrefix: '\n\n（外表描写：',
-    injectionSuffix: '）',
-    injectionSeparator: '，'
-  };
-
-  function getInjectionText() {
-    var parts = [];
-    var hairId = state.selected.hairstyle;
-    var clothesId = state.selected.clothes;
-    if (hairId) {
-      var hair = state.items.find(function(i) { return i.id === hairId; });
-      if (hair) parts.push(hair.promptText || hair.name);
-    }
-    if (clothesId) {
-      var clothes = state.items.find(function(i) { return i.id === clothesId; });
-      if (clothes) parts.push(clothes.promptText || clothes.name);
-    }
-    if (parts.length === 0) return '';
-    return CONFIG.injectionPrefix + parts.join(CONFIG.injectionSeparator) + CONFIG.injectionSuffix;
-  }
-
-  function setupInjection() {
-    var textarea = topDoc.querySelector(CONFIG.inputSelector);
-    if (!textarea) {
-      setTimeout(setupInjection, CONFIG.retryDelay);
-      return;
-    }
-
-    textarea.addEventListener('keydown', function(e) {
-      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey) return;
-      var injection = getInjectionText();
-      if (!injection) return;
-      setTimeout(function() {
-        if (textarea.value.indexOf(injection) === -1) {
-          textarea.value += injection;
-        }
-      }, 0);
-    }, true);
-  }
-
-  if (topDoc.readyState === 'loading') {
-    topDoc.addEventListener('DOMContentLoaded', function() { setTimeout(setupInjection, 1000); });
-  } else {
-    setTimeout(setupInjection, 1000);
-  }
-
-  // ========== 导入导出 ==========
-  function exportData() {
-    var blob = new Blob([JSON.stringify(state, null, 2)], {type: 'application/json'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'wardrobe-backup-' + new Date().toISOString().slice(0,10) + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function importData() {
-    var input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.addEventListener('change', function() {
-      var file = input.files[0];
-      if (!file) return;
-      var reader = new FileReader();
-      reader.addEventListener('load', function() {
-        try {
-          var data = JSON.parse(reader.result);
-          if (!data.categories || !data.items || !data.selected) {
-            throw new Error('数据格式不正确：缺少 categories/items/selected 字段');
-          }
-          if (!confirm('导入将覆盖当前数据，确定继续？')) return;
-          state = data;
-          saveState(state);
-          renderCategories();
-          renderItems();
-          alert('导入成功！共 ' + state.items.length + ' 个物品。');
-        } catch(e) {
-          alert('导入失败：' + e.message);
-        }
-      });
-      reader.readAsText(file);
-    });
-    input.click();
-  }
-
-  // 绑定导入导出按钮
-  (function() {
-    var expBtn = document.createElement('button');
-    expBtn.className = 'wdp-close';
-    expBtn.title = '导出数据';
-    expBtn.textContent = '📥';
-    expBtn.style.cssText = 'margin-right:8px;font-size:14px;';
-    expBtn.addEventListener('click', exportData);
-
-    var impBtn = document.createElement('button');
-    impBtn.className = 'wdp-close';
-    impBtn.title = '导入数据';
-    impBtn.textContent = '📤';
-    impBtn.style.cssText = 'margin-right:8px;font-size:14px;';
-    impBtn.addEventListener('click', importData);
-
-    var closeBtn = dom.header.querySelector('.wdp-close');
-    closeBtn.parentNode.insertBefore(impBtn, closeBtn);
-    closeBtn.parentNode.insertBefore(expBtn, impBtn);
-  })();
-
-  // ========== 键盘快捷键 ==========
-  topDoc.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      if (dom.overlay.classList.contains('wdp-modal-overlay--visible')) {
-        closeForm();
-      } else {
-        dom.panel.classList.remove('wdp-panel--visible');
-      }
-    }
-  });
-    console.log('[衣橱] UI 构建完成');
-    } catch(e) { console.error('[衣橱] 初始化失败:', e.message, e.stack); }
-  } // init()
-
-  if (topDoc.readyState === 'loading') {
-    topDoc.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
+  if (topDoc.readyState === 'loading') topDoc.addEventListener('DOMContentLoaded', init); else init();
+}());
