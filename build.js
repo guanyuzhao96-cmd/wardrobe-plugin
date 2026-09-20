@@ -1,22 +1,18 @@
 const fs = require('fs');
-const path = require('path');
 
-// jsDelivr CDN 地址
-const CDN_URL = 'https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@0d547c9/wardrobe-plugin.js';
-const content = "import '" + CDN_URL + "'";
+const CDN_REF = process.env.CDN_REF || 'de16fd5562d3c1814802d4deea4832a5f2768edb';
+const CDN_URL = `https://gcore.jsdelivr.net/gh/guanyuzhao96-cmd/wardrobe-plugin@${CDN_REF}/wardrobe-plugin.js`;
 
 const config = {
-  type: "script",
+  type: 'script',
   enabled: true,
-  name: "衣橱管理",
-  id: "c1a2b3d4-e5f6-7890-abcd-ef1234567890",
-  content: content,
-  info: "管理角色衣服和发型，选中后在生成时自动注入外表描写。右下角👗打开面板。",
+  name: 'NovelAI 衣服库',
+  id: 'c1a2b3d4-e5f6-7890-abcd-ef1234567890',
+  content: `import '${CDN_URL}'`,
+  info: '导入 JSON 衣服库，按多维标签筛选，并将 NovelAI 标签追加到聊天输入框。',
   button: { enabled: false, buttons: [] },
   data: {}
 };
 
 fs.writeFileSync('wardrobe-plugin.json', JSON.stringify(config, null, 2), 'utf-8');
-console.log('✅ wardrobe-plugin.json 已生成');
-console.log('CDN:', CDN_URL);
-console.log('Content:', content);
+console.log('Generated wardrobe-plugin.json for', CDN_REF);
