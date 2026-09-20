@@ -1,61 +1,44 @@
-# 酒馆衣橱插件
+# NovelAI 衣服库（酒馆助手插件）
 
-酒馆助手的独立插件，用于管理角色衣服和发型。图形化浮窗面板，每个物品配图，勾选后自动将外表描写注入 AI 提示词。
+右下角“👗 衣服”按钮会打开多维衣服选择浮窗。导入本地 JSON 后，点击衣服会把 `name, prompt` 的 NovelAI 英文标签追加到当前聊天输入框末尾；不会自动发送，也不会覆盖已有内容。
 
 ## 安装
 
-1. 打开云酒馆 → 酒馆助手面板
-2. 导入 `wardrobe-plugin.json`
-3. 确保插件开关处于开启状态
-4. 刷新页面
+1. 打开云酒馆的酒馆助手面板。
+2. 导入仓库中的 `wardrobe-plugin.json`。
+3. 确保插件已启用，刷新页面。
+4. 点击右下角“👗 衣服”，导入 `novelai-clothes-library-template.json` 后即可使用。
 
-## 使用
+## 筛选方式
 
-1. 点击右下角 👗 按钮打开衣橱面板
-2. 左侧分类树切换查看不同分类，支持添加/删除分类
-3. 点击"+ 添加"创建新物品——填写名称、图片 URL、提示词描述、分类
-4. 点击物品卡片选中（紫色边框 + ✓ 标记），同一类型只能选一个
-5. 关闭面板，正常聊天——发送时自动在提示词末尾追加外表描写
-6. 面板可拖拽移动，ESC 关闭
+默认模板包含四组可叠加筛选：角色阶段（少女、大学生、熟女）、风格（清纯、性感、火辣）、场景（日常、正装、制服、睡衣）和特殊类型（情趣）。同一组多选是“或”，不同组同时筛选是“且”。
 
-## 数据备份
+## JSON 格式
 
-- 导出：标题栏 📥 按钮 → 下载 JSON 备份文件
-- 导入：标题栏 📤 按钮 → 选择 JSON 文件恢复数据
-
-## 提示词注入格式
-
-```
-[原有提示词]
-
-（外表描写：梳着利落的高马尾，穿着黑色丝质晚礼服，裙摆曳地）
-```
-
-## 选择器配置
-
-如果云酒馆更新导致提示注入失效，编辑 `wardrobe-plugin.js` 开头的 `CONFIG` 对象后重新构建：
-
-```javascript
-var CONFIG = {
-  inputSelector: '#send_textarea, textarea[id*="send"], textarea[id*="message"]',
-  retryDelay: 2000,                       // DOM 未就绪时重试间隔(ms)
-  injectionPrefix: '\n\n（外表描写：',
-  injectionSuffix: '）',
-  injectionSeparator: '，'
-};
+```json
+{
+  "filter_groups": [
+    { "id": "persona", "label": "角色阶段", "options": ["少女", "大学生", "熟女"] },
+    { "id": "style", "label": "风格", "options": ["清纯", "性感", "火辣"] }
+  ],
+  "items": [
+    {
+      "display_name": "大学生水手制服",
+      "name": "sailor uniform",
+      "prompt": "white short sleeves, navy blue sailor collar, navy blue pleated skirt, knee socks, brown loafers",
+      "filters": { "persona": ["大学生"], "style": ["清纯"] }
+    }
+  ]
+}
 ```
 
-修改后运行 `node build.js` 重新生成 JSON。
+- `display_name`：只用于面板显示，可以中文。
+- `name`：核心 NovelAI 英文标签。
+- `prompt`：补充 NovelAI 标签，以英文逗号分隔。
+- `filters`：衣服所属筛选标签，键名必须对应 `filter_groups` 的 `id`。
 
-## 开发
+不要把中文说明、Markdown 或自然语言句子写入 `name`、`prompt`。权重可直接使用 NovelAI 形式，例如 `(sailor collar:1.15)`。
 
-```bash
-# 编辑 wardrobe-plugin.js 后重新构建
-node build.js
-```
+## 本地保存
 
-## 兼容性
-
-- 云酒馆 (e.chr1.com)
-- Chrome 浏览器
-- 酒馆助手 v2+
+导入后的衣服库会保存在当前浏览器本地；刷新页面仍可用。导入新 JSON 时会要求确认，清除操作只会删除本地缓存，不会删除原始 JSON 文件。
